@@ -1,0 +1,19 @@
+# copy this file to /etc/systemd/system/
+[Unit]
+Description=Arbitrate Monitor Service
+
+[Service]
+Type=simple
+# anaconda python executor
+ExecStart=/opt/miniconda/envs/spot_future_arb/bin/python /root/spot_future_arb/arb.py
+StandardOutput=append:/root/spot_future_arb/data/log/log.current
+StandardError=append:/root/spot_future_arb/data/log/log.current
+Restart=always
+User=root
+# reporter working directory
+WorkingDirectory=/root/spot_future_arb
+RestartSec=10s
+StartLimitInterval=0
+
+[Install]
+WantedBy=multi-user.target
