@@ -145,3 +145,4 @@ def send_arb_alert(futures:dict, required_pct:float=0.02):
         msg = f"### 无 高收益 合约\n" + msg
 
     send_mixin_msg(msg, _type="PLAIN_POST")
+    logger.debug(f"发送完成")
