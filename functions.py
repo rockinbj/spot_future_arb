@@ -90,8 +90,17 @@ def send_mixin_msg(msg, _type="PLAIN_TEXT"):
 def cal_profit_for_exchange(exchange_id):
     """
     计算一个交易所内的期现套利价差
+    返回的合约list 示例：
+    [
+    {"exchange":"binance",
+    "contract":"BTC/USD:BTC-230818",
+    "price_con":  29341.3   ,
+    "price_spot":  29043.92 ,
+    "profit": 0.0102,
+    },
+    ...]
     :param exchange_id: ccxt交易所ID，https://github.com/ccxt/ccxt
-    :return: dict {交易所：[合约名称,]} 例如{'binance':['BTC/USD:BTC-230919', ...], ...}
+    :return: 合约list
     """
 
     ex = getattr(ccxt, exchange_id)()
@@ -101,7 +110,9 @@ def cal_profit_for_exchange(exchange_id):
 
     # 要返回的合约集合, (合约，收益率)
     # {'binance': [('BTC/USD:BTC-230929', 0.0151), ('LINK/USD:LINK-230929', 0.0222)]}
-    futures = {exchange_id: []}
+    # [{"exchange":"binance", "contract": "BTC/USD:BTC-230929", "price_con":29999.0, "price_spot":29980.0, "profit":0.0155}, ...]
+    # futures = {exchange_id: []}
+    futures = []
 
     for symbol_fu, symbol_dict in symbols_fu_dict.items():
         price_fu = get_last_price_from_symbol(exchange=ex, symbol=symbol_fu)
@@ -116,14 +127,20 @@ def cal_profit_for_exchange(exchange_id):
         if cond_period and cond_required:
             logger.info(f'{exchange_id} {symbol_fu} 期末无风险利润 {pct:.2%}')
             logger.debug(f'{exchange_id} {symbol_fu}({price_fu}) ~ {symbol_spot}({price_spot}) ~ {pct:.2%}')
-            futures[exchange_id].append((symbol_fu, round(pct, 4)))
-
+            # futures[exchange_id].append((symbol_fu, round(pct, 4)))
+            futures.append({
+                "exchange": exchange_id,
+                "contract": symbol_fu,
+                "price_con": price_fu,
+                "price_spot": price_spot,
+                "profit": round(pct, 4),
+            })
         time.sleep(0.05)
 
     return futures
 
 
-def send_arb_alert(futures:dict, required_pct:float=0.02):
+def send_arb_alert(futures:pd.DataFrame, required_pct:float=0.02):
     """
     从合约集合中找出符合 收益率 要求的合约，发送mixin通知
     :param required_pct: 收益率要求，默认2%，发送收益率超过2%的合约信息
@@ -132,15 +149,20 @@ def send_arb_alert(futures:dict, required_pct:float=0.02):
     """
     msg = f"### 收益率>{Lowest_Profit_Pct:.2%} 的合约\n"
     msg_higher_than_rqr = ""
-    for ex_id, ftrs in futures.items():
+
+    grouped = futures.groupby('exchange')
+
+    for ex_id, group in grouped:
         msg += f'#### {ex_id}\n'
-        for f in ftrs:
-            msg += f'- {f[0]} 期末收益率 {f[1]:.2%}\n'
-            if f[1] > required_pct:
-                msg_higher_than_rqr += f'- {ex_id} {f[0]} {f[1]:.2%}\n'
+        for index, row in group.iterrows():
+            contract = row['contract']
+            profit = row['profit']
+            msg += f'- {contract} 期末收益率 {profit:.2%}\n'
+            if profit > required_pct:
+                msg_higher_than_rqr += f'- {ex_id} {contract} {profit:.2%}\n'
 
     if msg_higher_than_rqr:
-        msg = f"### 出现 收益率>{Required_Profit_Pct:.2%} 的合约\n" + msg_higher_than_rqr + msg
+        msg = f"### 出现 收益率>{required_pct:.2%} 的合约\n" + msg_higher_than_rqr + msg
     else:
         msg = f"### 无 高收益 合约\n" + msg
 
