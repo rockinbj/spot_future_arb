@@ -149,6 +149,7 @@ def send_arb_alert(futures:pd.DataFrame, required_pct:float=0.02):
     """
     msg = f"### 收益率>{Lowest_Profit_Pct:.2%} 的合约\n"
     msg_higher_than_rqr = ""
+    will_send = False
 
     grouped = futures.groupby('exchange')
 
@@ -160,11 +161,15 @@ def send_arb_alert(futures:pd.DataFrame, required_pct:float=0.02):
             msg += f'- {contract} 期末收益率 {profit:.2%}\n'
             if profit > required_pct:
                 msg_higher_than_rqr += f'- {ex_id} {contract} {profit:.2%}\n'
+                will_send = True
 
     if msg_higher_than_rqr:
         msg = f"### 出现 收益率>{required_pct:.2%} 的合约\n" + msg_higher_than_rqr + msg
     else:
         msg = f"### 无 高收益 合约\n" + msg
 
-    send_mixin_msg(msg, _type="PLAIN_POST")
-    logger.debug(f"发送完成")
+    if will_send:
+        send_mixin_msg(msg, _type="PLAIN_POST")
+        logger.debug(f"出现 高收益合约，发送完成")
+    else:
+        logger.debug(f"没有 高收益合约，不发送，只本地保存")
