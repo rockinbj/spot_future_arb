@@ -1,4 +1,5 @@
 import time
+import datetime as dt
 import ccxt
 import pandas as pd
 import requests
@@ -32,7 +33,8 @@ def get_last_price_from_symbol(exchange:ccxt.Exchange, symbol:str, timeframe="1m
     try:
         price = float(df.iloc[-2]["close"])
     except IndexError as err:
-        logger.exception(err)
+        logger.error(f'取交割合约的价格数据遇到错误，通常是远期合约还没有价格数据，问题不大，跳过')
+        # logger.exception(err)
         logger.error(f'symbol: {symbol}')
         logger.error(f'df:\n{df}')
         price = -1
@@ -87,6 +89,13 @@ def send_mixin_msg(msg, _type="PLAIN_TEXT"):
         logger.exception(err)
 
 
+def cal_days_from_today(date_str:str):
+    date_format = "%y%m%d"
+    end_date = dt.datetime.strptime(date_str, date_format)
+    current_date = dt.datetime.now()
+    return (end_date-current_date).days
+
+
 def cal_profit_for_exchange(exchange_id):
     """
     计算一个交易所内的期现套利价差
@@ -115,6 +124,10 @@ def cal_profit_for_exchange(exchange_id):
     futures = []
 
     for symbol_fu, symbol_dict in symbols_fu_dict.items():
+        # 从contract symbol中获取到期日：BTC/USD:BTC-231229
+        end_date = symbol_fu.split('-')[-1]
+        days_to_end = cal_days_from_today(end_date)
+
         price_fu = get_last_price_from_symbol(exchange=ex, symbol=symbol_fu)
         symbol_spot = get_spot_symbol_from_symbol_dict(symbol_dict)
         price_spot = get_last_price_from_symbol(exchange=ex, symbol=symbol_spot)
@@ -134,20 +147,22 @@ def cal_profit_for_exchange(exchange_id):
                 "price_con": price_fu,
                 "price_spot": price_spot,
                 "profit": round(pct, 4),
+                "days_to_end": days_to_end,
             })
         time.sleep(0.05)
 
     return futures
 
 
-def send_arb_alert(futures:pd.DataFrame, required_pct:float=0.02):
+def send_arb_alert(futures:pd.DataFrame, required_pct:float=0.02, required_within_days:int=15):
     """
     从合约集合中找出符合 收益率 要求的合约，发送mixin通知
+    :param required_within_days: 到期日距今要小于15天，超越15天的不提示
     :param required_pct: 收益率要求，默认2%，发送收益率超过2%的合约信息
     :param futures: 主程序 获取 所有交易所 合约集合的结果
     :return:
     """
-    msg = f"### 收益率>{Lowest_Profit_Pct:.2%} 的合约\n"
+    msg = f"### 收益率>{Lowest_Profit_Pct:.0%} {required_within_days}天内到期 的合约\n"
     msg_higher_than_rqr = ""
     will_send = False
 
@@ -158,18 +173,19 @@ def send_arb_alert(futures:pd.DataFrame, required_pct:float=0.02):
         for index, row in group.iterrows():
             contract = row['contract']
             profit = row['profit']
+            days = row['days_to_end']
             msg += f'- {contract} 期末收益率 {profit:.2%}\n'
-            if profit > required_pct:
-                msg_higher_than_rqr += f'- {ex_id} {contract} {profit:.2%}\n'
+            if profit > required_pct and days <= required_within_days:
+                msg_higher_than_rqr += f'- {ex_id} {contract} {profit:.2%} {days}\n'
                 will_send = True
 
     if msg_higher_than_rqr:
-        msg = f"### 出现 收益率>{required_pct:.2%} 的合约\n" + msg_higher_than_rqr + msg
+        msg = f"### 出现 收益率>{required_pct:.0%} {required_within_days}天内到期 的合约\n" + msg_higher_than_rqr + msg
     else:
-        msg = f"### 无 高收益 合约\n" + msg
+        msg = f"### 无 近期高收益 合约\n" + msg
 
     if will_send:
         send_mixin_msg(msg, _type="PLAIN_POST")
-        logger.debug(f"出现 高收益合约，发送完成")
+        logger.debug(f"出现 近期高收益合约，发送完成")
     else:
-        logger.debug(f"没有 高收益合约，不发送，只本地保存")
+        logger.debug(f"没有 近期高收益合约，不发送，只本地保存")

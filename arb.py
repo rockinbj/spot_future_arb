@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 from joblib import Parallel, delayed
 from functions import *
-from config import Exchange_List, Required_Profit_Pct
+from config import Exchange_List, Required_Profit_Pct, Required_Within_Days
 from my_logger import get_logger
 logger = get_logger("app.arb")
 
@@ -30,7 +30,7 @@ def main():
         df_fu.to_csv(df_file, encoding="gbk", index=False, header=False, mode="a")
 
     logger.debug(f'df_contracts:\n{df_fu}')
-    send_arb_alert(df_fu, required_pct=Required_Profit_Pct)
+    send_arb_alert(df_fu, required_pct=Required_Profit_Pct, required_within_days=Required_Within_Days)
 
 
 if __name__ == '__main__':
