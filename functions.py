@@ -93,7 +93,7 @@ def cal_days_from_today(date_str:str):
     date_format = "%y%m%d"
     end_date = dt.datetime.strptime(date_str, date_format)
     current_date = dt.datetime.now()
-    return (end_date-current_date).days
+    return (end_date-current_date).days + 1
 
 
 def cal_profit_for_exchange(exchange_id):
